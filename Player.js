@@ -17,8 +17,8 @@ function Player(sid, pid, yPos) {
     this.pid;   // Player id. In this case, 1 or 2 
     this.paddle;// player's paddle object 
     this.delay; // player's delay 
-
-    // Constructor
+	
+    // This is Player Constructors
     this.sid = sid;
     this.pid = pid;
     this.paddle = new Paddle(yPos);
