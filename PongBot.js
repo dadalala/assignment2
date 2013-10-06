@@ -27,6 +27,12 @@ function PongBot() {
     var myPaddle;       // player's paddle in game 
     var opponentPaddle; // opponent paddle in game
     var delay;          // delay simulated on current client 
+	var largestDelay = 0;		// the largest delay among players (for lag compensation)
+	var updateTime = 0;
+	var topPaddle;
+	var bottomPaddle;
+	var firstTime = true;
+	var resetDone = false;
 
     /*
      * private method: showMessage(location, msg)
@@ -86,8 +92,9 @@ function PongBot() {
                     appendMessage("serverMsg", message.content);
                     break;
                 case "update": 
-                    ball.x = message.ballX;
-                    ball.y = message.ballY;
+ // ball.x = message.ballX;
+ // ball.y = message.ballY;
+					largestDelay = message.largestDelay;
                     myPaddle.x = message.myPaddleX;
                     myPaddle.y = message.myPaddleY;
                     opponentPaddle.x = message.opponentPaddleX;
@@ -95,6 +102,10 @@ function PongBot() {
                     // BOT: automatically moves paddle
                     sendToServer({type:"move",x:ball.x});
                     break;
+				case "startGame":
+					firstTime = message.state;
+					ball.startMoving();
+					break;
                 default: 
                     appendMessage("serverMsg", "unhandled meesage type " + message.type);
                 }
@@ -158,7 +169,15 @@ function PongBot() {
      * equals to the frame rate.
      */
     var render = function() {
-        // Get context
+        
+		
+		//Other Var
+		
+		var now = new Date().getTime();// in ms
+		var timeDiff = now - updateTime;
+		
+		
+		// Get context
         var context = playArea.getContext("2d");
 
         // Clears the playArea
@@ -167,6 +186,41 @@ function PongBot() {
         // Draw playArea border
         context.fillStyle = "#000000";
         context.fillRect(0, 0, playArea.width, playArea.height);
+		
+		//Timed log
+		if( ball.isMoving() )
+		{
+			if( timeDiff > 40)
+				{
+					//Initialize player position
+					if(myPaddle.y < opponentPaddle.y)
+					{
+						topPaddle = myPaddle;
+						bottomPaddle = opponentPaddle;
+					}
+					else
+					{
+						topPaddle = opponentPaddle;
+						bottomPaddle = myPaddle;
+					}
+					
+					ball.moveOneStep(topPaddle, bottomPaddle,largestDelay);
+
+					updateTime = now;
+				}
+		}
+		else
+		{
+//reset game
+		
+			if(ball.reset)
+			{
+
+				ball.reset = false;
+			
+				sendToServer({type:"reset"});
+			}
+		}
 
         // Draw the ball
         context.fillStyle = "#ffffff";
@@ -181,7 +235,8 @@ function PongBot() {
             Paddle.WIDTH, Paddle.HEIGHT);
         context.fillRect(opponentPaddle.x - Paddle.WIDTH/2, 
             opponentPaddle.y - Paddle.HEIGHT/2,
-            Paddle.WIDTH, Paddle.HEIGHT);
+            Paddle.WIDTH, Paddle.HEIGHT);	
+			
     }
 
     /*

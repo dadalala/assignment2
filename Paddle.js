@@ -55,12 +55,12 @@ Paddle.prototype.move = function(newx) {
  * Move the paddle to new x-position by calculating
  * the velocity.
  */
-Paddle.prototype.moveOneStep = function(delay) {
+Paddle.prototype.moveOneStep = function() {
 
-	//Delay compensation
-		var delayCompensation = (1000 - delay)/1000;
+	//delay compensation
+		//var delayCompensation = (2000 - delay)/1000;
 	//move paddle	
-	var newx = this.x + this.vx*10*delayCompensation; // 10 is the "scaling factor"
+	var newx = this.x + this.vx*10;//*delayCompensation; // 10 is the "scaling factor"
     this.move(newx);
 }
 

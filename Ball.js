@@ -18,13 +18,15 @@
 function Ball() {
     // Private variables
 	var moving;	// boolean of whether ball is moving
+	var lastUpdate; // timestamp of lastUpdate
 	var vx;		// x-component of ball's velocity
 	var vy;		// y-component of ball's velocity
-	var lastUpdate; // timestamp of lastUpdate
 
 	// Public variables
 	this.x;		// x-coordinate of ball's position 
 	this.y;		// y-coordinate of ball's position
+
+	var reset;	//reset game
 
 	// constructor
 	var that = this;
@@ -33,6 +35,7 @@ function Ball() {
 	vy = 0;
 	this.x = Pong.WIDTH/2;
 	this.y = Pong.HEIGHT/2;
+	this.reset = false;
 
     /*
      * private method: updateVelocity(px)
@@ -67,11 +70,14 @@ function Ball() {
 	 * set the moving flag to true.
      */
 	this.startMoving = function(){
+		that.x = Pong.WIDTH/2;
+		that.y = Pong.HEIGHT/2;
 		vx = 0;
 		vy = Ball.VERTICAL_VELOCITY;
 		moving = true;
 		lastUpdate = getTimestamp();
 	}
+	
 	  
     /*
      * priviledged method: isMoving()
@@ -80,6 +86,25 @@ function Ball() {
      */
 	this.isMoving = function() {
 		return moving;
+	}
+	this.setMoving = function(movingP) {
+		moving = movingP;
+	}
+	
+	this.setVx = function(newVx) {
+		vx =  newVx;
+	}
+	
+	this.setVy = function(newVy) {
+		vy =  newVy;
+	}
+	
+	this.getVy = function() {
+		return vy;
+	}
+	
+	this.getVx = function() {
+		return vx;
 	}
 
 
@@ -91,12 +116,22 @@ function Ball() {
      */
 	this.moveOneStep = function(topPaddle, bottomPaddle,delay) {
 		var now = getTimestamp(); // get the current time in millisecond resolution
-		//Delay compensation
-		var delayCompensation = (1000 - delay)/1000;
 		
+		//Delay compensation
+		var delayCompensation = (2000 - delay)/2000;
+
 		// Update position
-		that.x += vx*delayCompensation*(now - lastUpdate)*Pong.FRAME_RATE/1000;
-		that.y += vy*delayCompensation*(now - lastUpdate)*Pong.FRAME_RATE/1000;
+		if(delay > 0)
+		{
+			that.x += vx*delayCompensation*(now - lastUpdate)*Pong.FRAME_RATE/1000;
+			that.y += vy*delayCompensation*(now - lastUpdate)*Pong.FRAME_RATE/1000;
+		}
+		else
+		{
+			// Update position
+			that.x += vx*(now - lastUpdate)*Pong.FRAME_RATE/1000;
+			that.y += vy*(now - lastUpdate)*Pong.FRAME_RATE/1000;
+		}
 
 		lastUpdate = now;
 
@@ -111,6 +146,7 @@ function Ball() {
 			vx = 0;
 			vy = 0;
 			moving = false;
+			that.reset = true;
 		} else if (that.y - Ball.HEIGHT/2 < Paddle.HEIGHT) {
 			// Chance for ball to collide with top paddle.
 			updateVelocity(topPaddle.x);
@@ -123,18 +159,18 @@ function Ball() {
 	// the following snippet defines an appropriate high resolution 
 	// getTimestamp function depends on platform.
 	if (typeof window === "undefined") {
-		console.log("using process.hrtime()");
+		//console.log("using process.hrtime()");
 		var getTimestamp = function() { var t = process.hrtime(); return t[0]*1e3 + t[1]*1.0/1e6} 
 	} else if (window.performance !== undefined) {
         if (window.performance.now) {
-            console.log("using window.performence.now()");
+            //console.log("using window.performence.now()");
             var getTimestamp = function() { return window.performance.now(); };
         } else if (window.performance.webkitNow) {
-            console.log("using window.performence.webkitNow()");
+            //console.log("using window.performence.webkitNow()");
             var getTimestamp = function() { return window.performance.webkitNow(); };
         }
 	} else {
-		console.log("using Date.now();");
+		//console.log("using Date.now();");
 		var getTimestamp = function() { return new Date().now(); };
 	}
 }

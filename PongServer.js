@@ -25,12 +25,26 @@ function PongServer() {
     var port;         // Game port 
     var count;        // Keeps track how many people are connected to server 
     var nextPID;      // PID to assign to next connected player (i.e. which player slot is open) 
-    var gameInterval; // Interval variable used for gameLoop 
+    var gameInterval; // Interval variable used for gameLoop
+    var gameStateInterval;
     var ball;         // the game ball 
     var sockets;      // Associative array for sockets, indexed via player ID
     var players;      // Associative array for players, indexed via socket ID
     var p1, p2;       // Player 1 and 2.
+	var largestDelay = 0; // largest delay
+    // Ali
+    var p1Inputs = new Array();
+    var p2Inputs = new Array();
+    var p1LastAckInputSeqNo;
+    var p2LastAckInputSeqNo;
 
+    //Update Loops Frequency
+    var gameStateUpdateFrequency = 15;
+    var serverSendUpdateFrequency = 45;
+
+    //Reset Condition
+    var sentReset = false;
+    var serverStarted = false;
     /*
      * private method: broadcast(msg)
      *
@@ -48,8 +62,7 @@ function PongServer() {
 
     /*
      * private method: unicast(socket, msg)
-     *
-     * unicast takes in a socket and a JSON structure 
+     * unicast takes in a socket and a JSON structure
      * and send the message through the given socket.
      *
      * e.g., unicast(socket, {type: "abc", x: 30});
@@ -70,7 +83,15 @@ function PongServer() {
         if (gameInterval !== undefined) {
             clearInterval(gameInterval);
             gameInterval = undefined;
+            clearInterval(gameStateInterval);
+            gameStateInterval = undefined;
+            //Ali
+            p1LastAckInputSeqNo = 0;
+            p2LastAckInputSeqNo = 0;
+            p1Inputs = [];
+            p2Inputs = [];
         }
+
     }
 
 
@@ -103,7 +124,51 @@ function PongServer() {
         // Updates the nextPID to issue (flip-flop between 1 and 2)
         nextPID = ((nextPID + 1) % 2 === 0) ? 2 : 1;
     }
+    // Ali
+    var processInputs = function(player, inputArr){
+        var inputLength = inputArr.length;
+        //check if inputs not empty
+        if (inputLength){
+            for (var i = 0; i < inputLength; ++i){
+                var userInput = inputArr[i];
 
+                //dont want to process inputs before inputSeqNo
+                if (player.pid == 1){
+                    if (userInput.seqNo <= p1LastAckInputSeqNo) continue;
+                    //console.log("server p1LastAckInputSeq: " + p1LastAckInputSeqNo);
+                    p1LastAckInputSeqNo = userInput.seqNo;
+                    //this.lastAckInputSeqNo = userInput.seqNo;
+                    var newMouseX = userInput.input;
+                    player.paddle.move(newMouseX);
+                    p1Inputs = new Array();
+                }
+                else if (player.pid == 2){
+                    if (userInput.seqNo <= p2LastAckInputSeqNo) continue;
+                    //console.log("server p2LastAckInputSeq: " + p2LastAckInputSeqNo);
+                    p2LastAckInputSeqNo = userInput.seqNo;
+                    //this.lastAckInputSeqNo = userInput.seqNo;
+                    var newMouseX = userInput.input;
+                    player.paddle.move(newMouseX);
+                    p2Inputs = new Array();
+                }
+
+            }
+        }
+
+    }
+
+    //Ali
+    var updateGameState = function(){
+        // Move paddle (in case accelerometer is used and vx is non-zero).
+        p1.paddle.moveOneStep();
+        p2.paddle.moveOneStep();
+
+        // Move ball
+        processInputs(p1, p1Inputs);
+        processInputs(p2, p2Inputs);
+        ball.moveOneStep(p1.paddle, p2.paddle,largestDelay);
+
+    }
     /*
      * private method: gameLoop()
      *
@@ -115,54 +180,65 @@ function PongServer() {
         // Check if ball is moving
         if (ball.isMoving()) {
 
-			//get slowest delay
-			var slowestDelay;
-			var p1Delay = p1.getDelay();
-			var p2Delay = p2.getDelay();
-			
-			if(p1Delay > p2Delay)
-				slowestDelay = p1Delay;
-				
-			else if (p2Delay > p1Delay)
-						slowestDelay = p2Delay;
-				else
-					slowestDelay = 0;
-		
-            // Move paddle (in case accelerometer is used and vx is non-zero).
-            p1.paddle.moveOneStep(slowestDelay);
-            p2.paddle.moveOneStep(slowestDelay);
-			
-
-			
-            // Move ball
-            ball.moveOneStep(p1.paddle, p2.paddle,slowestDelay);
-
             // Update on player side
             var bx = ball.x;
             var by = ball.y;
+			
+			// Get largest Delay
+			if( p1.getDelay() > p2.getDelay())
+				largestDelay = p1.getDelay();
+			else
+				largestDelay = p2.getDelay();
+ 
+			var predictedBallX = bx + (largestDelay/1000)*ball.getVx();
+			var predictedBallY = by + (largestDelay/1000)*ball.getVy();
+			
             var states = { 
                 type: "update",
-				slowestDelay:slowestDelay,
-                ballX: bx,
-                ballY: by,
+				largestDelay:largestDelay,
+                lastProcessedInputSeqNo: p1LastAckInputSeqNo,
+                time: new Date().getTime(),
+                ballLastUpdate: ball.lastUpdate,
+                ballMoving: ball.isMoving(),
+                ballX: predictedBallX,
+                ballY: predictedBallY,
+                ballVx: ball.getVx(),
+                ballVy: ball.getVy(),
                 myPaddleX: p1.paddle.x,
                 myPaddleY: p1.paddle.y,
                 opponentPaddleX: p2.paddle.x,
-                opponentPaddleY: p2.paddle.y};
-            setTimeout(unicast, p1.getDelay(), sockets[1], states);
+                opponentPaddleY: p2.paddle.y
+            };
+
+                //console.log("ballX: " + predictedBallX);
+ 				//console.log("ballY: " + predictedBallY);
+
+                setTimeout(unicast, largestDelay, sockets[1], states);
             states = { 
                 type: "update",
-				slowestDelay:slowestDelay,
-                ballX: bx,
-                ballY: by,
+				largestDelay:largestDelay,
+                lastProcessedInputSeqNo: p2LastAckInputSeqNo,
+                time: new Date().getTime(),
+                ballLastUpdate: ball.lastUpdate,
+                ballMoving: ball.isMoving(),
+                ballX: predictedBallX,
+                ballY: predictedBallY,
+                ballVx: ball.getVx(),
+                ballVy: ball.getVy(),
                 myPaddleX: p2.paddle.x,
                 myPaddleY: p2.paddle.y,
                 opponentPaddleX: p1.paddle.x,
-                opponentPaddleY: p1.paddle.y};
-            setTimeout(unicast, p2.getDelay(), sockets[2], states);
-        } else {
-            // Reset
-            reset();
+                opponentPaddleY: p1.paddle.y
+            };
+
+            setTimeout(unicast, largestDelay, sockets[2], states);
+
+            //if ball not moving
+            //ball reset and server has not sent reset broadcast
+            } else if (!ball.isMoving() && !sentReset){
+                sentReset = true;
+                broadcast({type:"reset"});
+                reset();
         }
     }
 
@@ -180,17 +256,36 @@ function PongServer() {
             // already started.
             console.log("Already playing!");
 
-        } else if (Object.keys(players).length < 2) {
+        }
+        else if (Object.keys(players).length < 2) {
             // We need two players to play.
             console.log("Not enough players!");
             broadcast({type:"message", content:"Not enough player"});
 
         } else {
             // Everything is a OK
+            //Start Game
+			console.log("Enter startgame function");
+			var startState = 
+			{ 
+                type: "startGame",
+				state: false
+			};
+			
+			if( p1.getDelay() > p2.getDelay())
+				largestDelay = p1.getDelay();
+			else
+				largestDelay = p2.getDelay();
+				
+            setTimeout(unicast, largestDelay, sockets[1], startState);
+			setTimeout(unicast, largestDelay, sockets[2], startState);
             ball.startMoving();
-            gameInterval = setInterval(function() {gameLoop();}, 1000/Pong.FRAME_RATE);
+            sentReset = false;
+            //Server GameState Update Loop
+            gameInterval = setInterval(function() {gameLoop();}, serverSendUpdateFrequency); // serverUpdateLoop * 3 = 30ms
+            gameStateInterval = setInterval(function(){ updateGameState();}, gameStateUpdateFrequency);
         }
-    }
+    }//startGame()
 
     /*
      * priviledge method: start()
@@ -256,6 +351,8 @@ function PongServer() {
                     switch (message.type) {
                         // one of the player starts the game.
                         case "start": 
+                        
+                        	console.log("Enter Server Start case");
                             startGame();
                             break;
 
@@ -273,6 +370,28 @@ function PongServer() {
                                 players[conn.id].paddle.accelerate(message.vx);
                             },
                             players[conn.id].getDelay());
+                            break;
+
+                        // client sends restart Game
+						case "reset":
+                            if (!sentReset){ //server did not send reset
+                                sentReset = true;
+							    reset(); //reset server
+                                broadcast({type: reset}); //tell other client
+                            }
+							break;
+
+                        case "input":
+                            var playerID = players[conn.id];
+                            var userInput = message.input;
+
+                            if (playerID.pid == 1){
+                                p1Inputs.push(userInput);
+                                //console.log("p1 userInput seqNo: " + userInput.seqNo);
+                            }
+                            else if (playerID.pid == 2){
+                                p2Inputs.push(userInput);
+                            }
                             break;
 
                         // one of the player change the delay
